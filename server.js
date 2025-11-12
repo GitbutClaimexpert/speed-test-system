@@ -1,11 +1,15 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs').promises;
-const path = require('path');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'speed-test-data.json');
+
+// Database connection
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
 // Middleware
 app.use(cors());
@@ -16,28 +20,24 @@ app.use(express.static('public'));
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'admin123';
 
-// Initialize data file if it doesn't exist
-async function initializeDataFile() {
+// Initialize database table
+async function initializeDatabase() {
     try {
-        await fs.access(DATA_FILE);
-    } catch {
-        await fs.writeFile(DATA_FILE, JSON.stringify([]));
-    }
-}
-
-// Read data from file
-async function readData() {
-    try {
-        const data = await fs.readFile(DATA_FILE, 'utf8');
-        return JSON.parse(data);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS speed_tests (
+                id SERIAL PRIMARY KEY,
+                ref_number VARCHAR(255) NOT NULL,
+                download DECIMAL(10, 2) NOT NULL,
+                upload DECIMAL(10, 2) NOT NULL,
+                ping INTEGER NOT NULL,
+                ip VARCHAR(255),
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log('Database table initialized');
     } catch (error) {
-        return [];
+        console.error('Error initializing database:', error);
     }
-}
-
-// Write data to file
-async function writeData(data) {
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
 // Admin login endpoint
@@ -56,7 +56,6 @@ app.post('/api/test-result', async (req, res) => {
     try {
         const { refNumber, download, upload, ping } = req.body;
         
-        // Validate input
         if (!refNumber || !download || !upload || !ping) {
             return res.status(400).json({ 
                 success: false, 
@@ -64,31 +63,23 @@ app.post('/api/test-result', async (req, res) => {
             });
         }
 
-        const data = await readData();
-        
-        const newResult = {
-            id: Date.now().toString(),
-            refNumber: refNumber.toString(),
-            download: parseFloat(download),
-            upload: parseFloat(upload),
-            ping: parseInt(ping),
-            timestamp: new Date().toISOString(),
-            ip: req.ip || req.connection.remoteAddress
-        };
+        const ip = req.ip || req.connection.remoteAddress;
 
-        data.push(newResult);
-        await writeData(data);
+        const result = await pool.query(
+            'INSERT INTO speed_tests (ref_number, download, upload, ping, ip) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [refNumber, parseFloat(download), parseFloat(upload), parseInt(ping), ip]
+        );
 
         res.json({ 
             success: true, 
             message: 'Test result saved successfully',
-            result: newResult
+            result: result.rows[0]
         });
     } catch (error) {
         console.error('Error saving test result:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Error saving test result' 
+            message: 'Error saving test result: ' + error.message
         });
     }
 });
@@ -96,16 +87,19 @@ app.post('/api/test-result', async (req, res) => {
 // Get all test results (admin only)
 app.get('/api/admin/results', async (req, res) => {
     try {
-        const data = await readData();
+        const result = await pool.query(
+            'SELECT id as "id", ref_number as "refNumber", download, upload, ping, ip, timestamp FROM speed_tests ORDER BY timestamp DESC'
+        );
+        
         res.json({ 
             success: true, 
-            results: data 
+            results: result.rows 
         });
     } catch (error) {
         console.error('Error fetching results:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Error fetching results' 
+            message: 'Error fetching results: ' + error.message
         });
     }
 });
@@ -113,7 +107,7 @@ app.get('/api/admin/results', async (req, res) => {
 // Clear all data (admin only)
 app.delete('/api/admin/results', async (req, res) => {
     try {
-        await writeData([]);
+        await pool.query('DELETE FROM speed_tests');
         res.json({ 
             success: true, 
             message: 'All data cleared successfully' 
@@ -122,15 +116,15 @@ app.delete('/api/admin/results', async (req, res) => {
         console.error('Error clearing data:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Error clearing data' 
+            message: 'Error clearing data: ' + error.message
         });
     }
 });
 
 // Start server
-initializeDataFile().then(() => {
+initializeDatabase().then(() => {
     app.listen(PORT, () => {
-        console.log(`Speed Test Server running on http://localhost:${PORT}`);
+        console.log(`Speed Test Server running on port ${PORT}`);
         console.log(`Admin credentials: username="${ADMIN_USERNAME}", password="${ADMIN_PASSWORD}"`);
     });
 });
