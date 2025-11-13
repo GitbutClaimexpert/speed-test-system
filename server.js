@@ -121,6 +121,23 @@ app.delete('/api/admin/results', async (req, res) => {
     }
 });
 
+// Upload test endpoint - receives data and reports back
+app.post('/api/upload-test', (req, res) => {
+    // Just receive the data and send back success
+    // The client will measure the time it takes
+    res.json({ success: true, received: req.body ? JSON.stringify(req.body).length : 0 });
+});
+
+// Download test endpoint - sends test data
+app.get('/api/download-test', (req, res) => {
+    // Send 1MB of random data
+    const size = 1024 * 1024; // 1MB
+    const data = Buffer.alloc(size, 'x');
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(data);
+});
+
 // Start server
 initializeDatabase().then(() => {
     app.listen(PORT, () => {
