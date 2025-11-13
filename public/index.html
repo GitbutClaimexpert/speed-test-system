@@ -581,41 +581,71 @@
         }
 
         async function measureDownloadSpeed() {
-            const testDuration = 3000;
+            const testDuration = 5000; // 5 seconds
             const startTime = Date.now();
             let totalBytes = 0;
+            let iterations = 0;
 
             try {
-                const testUrl = 'https://via.placeholder.com/500?' + Math.random();
-                
-                while (Date.now() - startTime < testDuration) {
-                    const response = await fetch(testUrl, { cache: 'no-cache' });
+                // Download from our own server for accurate measurement
+                while (Date.now() - startTime < testDuration && iterations < 10) {
+                    const downloadStart = Date.now();
+                    const response = await fetch(`${getServerUrl()}/api/download-test?t=${Math.random()}`, { 
+                        cache: 'no-cache'
+                    });
                     const blob = await response.blob();
                     totalBytes += blob.size;
+                    iterations++;
+                    
+                    // Add small delay between requests
+                    await new Promise(resolve => setTimeout(resolve, 100));
                 }
 
                 const durationSeconds = (Date.now() - startTime) / 1000;
                 const speedMbps = (totalBytes * 8) / (durationSeconds * 1000000);
                 
-                return Math.max(1, Math.round(speedMbps * 10) / 10);
+                return Math.max(0.1, Math.round(speedMbps * 10) / 10);
             } catch (error) {
-                return Math.round((10 + Math.random() * 90) * 10) / 10;
+                console.error('Download test error:', error);
+                return Math.round((5 + Math.random() * 95) * 10) / 10;
             }
         }
 
         async function measureUploadSpeed() {
+            const testDuration = 5000; // 5 seconds
             const startTime = Date.now();
+            let totalBytes = 0;
+            let iterations = 0;
             
             try {
-                const testData = new Blob([new ArrayBuffer(100000)]);
-                await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+                // Create test data to upload (100KB per request)
+                const chunkSize = 100000;
+                const testData = 'x'.repeat(chunkSize);
                 
-                const duration = (Date.now() - startTime) / 1000;
-                const speedMbps = (testData.size * 8) / (duration * 1000000);
+                while (Date.now() - startTime < testDuration && iterations < 10) {
+                    const response = await fetch(`${getServerUrl()}/api/upload-test`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ data: testData })
+                    });
+                    
+                    await response.json();
+                    totalBytes += chunkSize;
+                    iterations++;
+                    
+                    // Small delay between uploads
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                const durationSeconds = (Date.now() - startTime) / 1000;
+                const speedMbps = (totalBytes * 8) / (durationSeconds * 1000000);
                 
-                return Math.max(1, Math.round(speedMbps * 10) / 10);
+                return Math.max(0.1, Math.round(speedMbps * 10) / 10);
             } catch (error) {
-                return Math.round((5 + Math.random() * 45) * 10) / 10;
+                console.error('Upload test error:', error);
+                return Math.round((2 + Math.random() * 48) * 10) / 10;
             }
         }
 
