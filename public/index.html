@@ -484,7 +484,7 @@
                         <span class="result-unit">ms</span>
                     </div>
                 </div>
-                <div class="success-message">Test completed and saved successfully!</div>
+                <div class="success-message">✅ Automated test complete! Now scroll down and enter your manual test results from fast.com</div>
             </div>
 
             <span class="toggle-view" onclick="toggleAdminView()">Admin Access</span>
@@ -744,13 +744,9 @@
                 const uploadSpeed = await measureUploadSpeed();
                 progressFill.style.width = '100%';
 
-                progressLabel.textContent = 'Saving results...';
+                progressLabel.textContent = 'Test complete! Now enter manual results.';
 
-                // Save to server
-                await saveTestResult(refNumber, downloadSpeed, uploadSpeed, ping);
-
-                progressLabel.textContent = 'Test complete!';
-
+                // Display results and enable manual entry (don't save yet)
                 setTimeout(() => {
                     displayResults(downloadSpeed, uploadSpeed, ping);
                 }, 500);
