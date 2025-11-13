@@ -35,6 +35,18 @@ async function initializeDatabase() {
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        
+        // Add test_type column if it doesn't exist (for existing databases)
+        try {
+            await pool.query(`
+                ALTER TABLE speed_tests 
+                ADD COLUMN IF NOT EXISTS test_type VARCHAR(50) DEFAULT 'automated'
+            `);
+        } catch (err) {
+            // Column might already exist, ignore error
+            console.log('test_type column may already exist');
+        }
+        
         console.log('Database table initialized');
     } catch (error) {
         console.error('Error initializing database:', error);
