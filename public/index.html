@@ -270,8 +270,8 @@
         }
 
         .info-box {
-            background: #e8f4fd;
-            border-left: 4px solid #667eea;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
             padding: 15px;
             margin-bottom: 20px;
             border-radius: 5px;
@@ -281,6 +281,27 @@
             margin: 5px 0;
             font-size: 14px;
             color: #333;
+        }
+
+        .test-status {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-item {
+            margin: 8px 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-completed {
+            color: #27ae60;
+        }
+
+        .status-pending {
+            color: #e74c3c;
         }
 
         .manual-entry {
@@ -395,13 +416,26 @@
             </div>
 
             <div class="info-box">
-                <p><strong>Step 1:</strong> Enter your reference number above</p>
-                <p><strong>Step 2:</strong> Run automated test OR enter manual results below</p>
+                <p><strong>⚠️ REQUIRED:</strong> You must complete BOTH tests</p>
+                <p><strong>Step 1:</strong> Run automated test</p>
+                <p><strong>Step 2:</strong> Run manual test at fast.com and enter results</p>
+                <p><strong>Step 3:</strong> Submit (both tests must be completed)</p>
             </div>
 
-            <div class="manual-entry" id="manualEntry">
-                <h3>Manual Speed Entry (Recommended)</h3>
-                <p class="manual-subtitle">Run a test at <a href="https://fast.com" target="_blank">fast.com</a> or <a href="https://speedtest.net" target="_blank">speedtest.net</a> and enter your results:</p>
+            <div class="test-status" id="testStatus">
+                <div class="status-item">
+                    <span id="autoStatus">❌ Automated Test: Not completed</span>
+                </div>
+                <div class="status-item">
+                    <span id="manualStatus">❌ Manual Test: Not completed</span>
+                </div>
+            </div>
+
+            <button id="startTestBtn" onclick="startSpeedTest()">Step 1: Run Automated Test</button>
+
+            <div class="manual-entry" id="manualEntry" style="opacity: 0.5; pointer-events: none;">
+                <h3>Step 2: Manual Speed Entry</h3>
+                <p class="manual-subtitle">⚠️ Complete automated test first, then run a test at <a href="https://fast.com" target="_blank">fast.com</a> and enter results:</p>
                 
                 <div class="input-row">
                     <div class="input-group-inline">
@@ -418,14 +452,8 @@
                     </div>
                 </div>
                 
-                <button id="submitManualBtn" onclick="submitManualResults()">Submit Manual Results</button>
+                <button id="submitManualBtn" onclick="submitManualResults()">Step 3: Submit Both Results</button>
             </div>
-
-            <div class="divider">
-                <span>OR</span>
-            </div>
-
-            <button id="startTestBtn" onclick="startSpeedTest()">Run Automated Test</button>
 
             <div class="progress-bar" id="progressBar">
                 <div class="progress-label" id="progressLabel">Initializing...</div>
@@ -521,6 +549,10 @@
         let SERVER_URL = window.location.origin; // Use same domain as the page
         let isAdminLoggedIn = sessionStorage.getItem('adminLoggedIn') === 'true';
         let testResults = [];
+        
+        // Track test completion
+        let automatedTestCompleted = false;
+        let automatedResults = { download: 0, upload: 0, ping: 0 };
 
         // Get server URL from storage or input
         function getServerUrl() {
@@ -628,6 +660,12 @@
             const ping = document.getElementById('manualPing').value;
             const errorMessage = document.getElementById('errorMessage');
 
+            // Check if automated test was completed
+            if (!automatedTestCompleted) {
+                alert('❌ Please complete the automated test first (Step 1)');
+                return;
+            }
+
             // Validate inputs
             if (!refNumber || refNumber.length < 3) {
                 errorMessage.textContent = 'Please enter a valid reference number';
@@ -646,24 +684,45 @@
             // Disable button during submission
             const submitBtn = document.getElementById('submitManualBtn');
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Submitting...';
+            submitBtn.textContent = 'Submitting both results...';
 
             try {
+                // Save automated test result
+                await saveTestResult(refNumber, automatedResults.download, automatedResults.upload, automatedResults.ping, 'automated');
+                
+                // Save manual test result
                 await saveTestResult(refNumber, parseFloat(download), parseFloat(upload), parseInt(ping), 'manual');
                 
-                // Display results
-                displayResults(parseFloat(download), parseFloat(upload), parseInt(ping));
+                // Update status
+                document.getElementById('manualStatus').innerHTML = '✅ Manual Test: Completed (' + download + ' Mbps down, ' + upload + ' Mbps up)';
+                document.getElementById('manualStatus').className = 'status-completed';
+                
+                // Show success message
+                alert('✅ Success! Both test results have been submitted.\n\n' +
+                      'Automated: ' + automatedResults.download + ' Mbps down, ' + automatedResults.upload + ' Mbps up\n' +
+                      'Manual: ' + download + ' Mbps down, ' + upload + ' Mbps up');
                 
                 // Clear form
                 document.getElementById('manualDownload').value = '';
                 document.getElementById('manualUpload').value = '';
                 document.getElementById('manualPing').value = '';
+                document.getElementById('refNumber').value = '';
+                
+                // Reset for next user
+                automatedTestCompleted = false;
+                document.getElementById('manualEntry').style.opacity = '0.5';
+                document.getElementById('manualEntry').style.pointerEvents = 'none';
+                document.getElementById('testResults').style.display = 'none';
+                document.getElementById('autoStatus').innerHTML = '❌ Automated Test: Not completed';
+                document.getElementById('autoStatus').className = 'status-pending';
+                document.getElementById('manualStatus').innerHTML = '❌ Manual Test: Not completed';
+                document.getElementById('manualStatus').className = 'status-pending';
                 
             } catch (error) {
                 alert('Error saving results. Please try again.');
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Manual Results';
+                submitBtn.textContent = 'Step 3: Submit Both Results';
             }
         }
 
@@ -891,6 +950,19 @@
             document.getElementById('testResults').style.display = 'block';
             document.getElementById('progressBar').style.display = 'none';
             document.getElementById('startTestBtn').disabled = false;
+            
+            // Mark automated test as completed
+            automatedTestCompleted = true;
+            automatedResults = { download, upload, ping };
+            
+            // Update status
+            document.getElementById('autoStatus').innerHTML = '✅ Automated Test: Completed (' + download + ' Mbps down, ' + upload + ' Mbps up)';
+            document.getElementById('autoStatus').className = 'status-completed';
+            
+            // Enable manual entry section
+            const manualEntry = document.getElementById('manualEntry');
+            manualEntry.style.opacity = '1';
+            manualEntry.style.pointerEvents = 'auto';
         }
 
         function resetTest() {
