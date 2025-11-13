@@ -30,6 +30,7 @@ async function initializeDatabase() {
                 download DECIMAL(10, 2) NOT NULL,
                 upload DECIMAL(10, 2) NOT NULL,
                 ping INTEGER NOT NULL,
+                test_type VARCHAR(50) DEFAULT 'automated',
                 ip VARCHAR(255),
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -54,7 +55,7 @@ app.post('/api/admin/login', (req, res) => {
 // Submit speed test result
 app.post('/api/test-result', async (req, res) => {
     try {
-        const { refNumber, download, upload, ping } = req.body;
+        const { refNumber, download, upload, ping, testType } = req.body;
         
         if (!refNumber || !download || !upload || !ping) {
             return res.status(400).json({ 
@@ -66,8 +67,8 @@ app.post('/api/test-result', async (req, res) => {
         const ip = req.ip || req.connection.remoteAddress;
 
         const result = await pool.query(
-            'INSERT INTO speed_tests (ref_number, download, upload, ping, ip) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [refNumber, parseFloat(download), parseFloat(upload), parseInt(ping), ip]
+            'INSERT INTO speed_tests (ref_number, download, upload, ping, test_type, ip) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [refNumber, parseFloat(download), parseFloat(upload), parseInt(ping), testType || 'automated', ip]
         );
 
         res.json({ 
@@ -88,7 +89,7 @@ app.post('/api/test-result', async (req, res) => {
 app.get('/api/admin/results', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id as "id", ref_number as "refNumber", download, upload, ping, ip, timestamp FROM speed_tests ORDER BY timestamp DESC'
+            'SELECT id as "id", ref_number as "refNumber", download, upload, ping, test_type as "testType", ip, timestamp FROM speed_tests ORDER BY timestamp DESC'
         );
         
         res.json({ 
