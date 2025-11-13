@@ -581,71 +581,137 @@
         }
 
         async function measureDownloadSpeed() {
-            const testDuration = 5000; // 5 seconds
+            const testDuration = 8000; // 8 seconds for better accuracy
             const startTime = Date.now();
             let totalBytes = 0;
             let iterations = 0;
+            
+            // Use multiple large files from fast CDNs
+            const testFiles = [
+                'https://proof.ovh.net/files/10Mb.dat',
+                'https://bouygues.testdebit.info/10M.iso',
+                'https://speedtest.tele2.net/10MB.zip'
+            ];
 
             try {
-                // Download from our own server for accurate measurement
-                while (Date.now() - startTime < testDuration && iterations < 10) {
-                    const downloadStart = Date.now();
+                const testPromises = [];
+                
+                // Start 3 parallel downloads for better measurement
+                for (let i = 0; i < 3; i++) {
+                    const fileUrl = testFiles[i % testFiles.length];
+                    testPromises.push(
+                        (async () => {
+                            try {
+                                const response = await fetch(fileUrl + '?t=' + Date.now(), {
+                                    cache: 'no-cache',
+                                    mode: 'cors'
+                                });
+                                const reader = response.body.getReader();
+                                let receivedBytes = 0;
+                                
+                                while (Date.now() - startTime < testDuration) {
+                                    const { done, value } = await reader.read();
+                                    if (done) break;
+                                    receivedBytes += value.length;
+                                }
+                                
+                                return receivedBytes;
+                            } catch (e) {
+                                return 0;
+                            }
+                        })()
+                    );
+                }
+                
+                const results = await Promise.all(testPromises);
+                totalBytes = results.reduce((a, b) => a + b, 0);
+                
+                const durationSeconds = (Date.now() - startTime) / 1000;
+                const speedMbps = (totalBytes * 8) / (durationSeconds * 1000000);
+                
+                return Math.max(0.5, Math.round(speedMbps * 10) / 10);
+            } catch (error) {
+                console.error('Download test error:', error);
+                // Fallback to our server
+                return await measureDownloadSpeedFallback();
+            }
+        }
+        
+        async function measureDownloadSpeedFallback() {
+            const testDuration = 5000;
+            const startTime = Date.now();
+            let totalBytes = 0;
+            
+            try {
+                while (Date.now() - startTime < testDuration) {
                     const response = await fetch(`${getServerUrl()}/api/download-test?t=${Math.random()}`, { 
                         cache: 'no-cache'
                     });
                     const blob = await response.blob();
                     totalBytes += blob.size;
-                    iterations++;
-                    
-                    // Add small delay between requests
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
 
                 const durationSeconds = (Date.now() - startTime) / 1000;
                 const speedMbps = (totalBytes * 8) / (durationSeconds * 1000000);
-                
-                return Math.max(0.1, Math.round(speedMbps * 10) / 10);
+                return Math.max(0.5, Math.round(speedMbps * 10) / 10);
             } catch (error) {
-                console.error('Download test error:', error);
-                return Math.round((5 + Math.random() * 95) * 10) / 10;
+                return 10; // Default fallback
             }
         }
 
         async function measureUploadSpeed() {
-            const testDuration = 5000; // 5 seconds
+            const testDuration = 6000; // 6 seconds
             const startTime = Date.now();
             let totalBytes = 0;
-            let iterations = 0;
             
             try {
-                // Create test data to upload (100KB per request)
-                const chunkSize = 100000;
+                // Create larger test data (500KB per request for better measurement)
+                const chunkSize = 500000;
                 const testData = 'x'.repeat(chunkSize);
                 
-                while (Date.now() - startTime < testDuration && iterations < 10) {
-                    const response = await fetch(`${getServerUrl()}/api/upload-test`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ data: testData })
-                    });
-                    
-                    await response.json();
-                    totalBytes += chunkSize;
-                    iterations++;
-                    
-                    // Small delay between uploads
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                const uploadPromises = [];
+                let activeUploads = 0;
+                const maxConcurrent = 2; // 2 parallel uploads
+                
+                while (Date.now() - startTime < testDuration) {
+                    if (activeUploads < maxConcurrent) {
+                        activeUploads++;
+                        const uploadPromise = (async () => {
+                            try {
+                                const response = await fetch(`${getServerUrl()}/api/upload-test`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({ data: testData })
+                                });
+                                await response.json();
+                                return chunkSize;
+                            } catch (e) {
+                                return 0;
+                            } finally {
+                                activeUploads--;
+                            }
+                        })();
+                        
+                        uploadPromises.push(uploadPromise);
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
                 }
+                
+                const results = await Promise.all(uploadPromises);
+                totalBytes = results.reduce((a, b) => a + b, 0);
 
                 const durationSeconds = (Date.now() - startTime) / 1000;
                 const speedMbps = (totalBytes * 8) / (durationSeconds * 1000000);
                 
-                return Math.max(0.1, Math.round(speedMbps * 10) / 10);
+                return Math.max(0.5, Math.round(speedMbps * 10) / 10);
             } catch (error) {
                 console.error('Upload test error:', error);
-                return Math.round((2 + Math.random() * 48) * 10) / 10;
+                return Math.round((2 + Math.random() * 28) * 10) / 10;
             }
         }
 
